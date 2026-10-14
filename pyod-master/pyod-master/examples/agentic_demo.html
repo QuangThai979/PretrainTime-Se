@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyOD V3: Agentic Anomaly Detection</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --surface: #ffffff;
+    --surface-alt: #f4f6f9;
+    --border: #e1e5eb;
+    --border-light: #eef1f5;
+    --text: #1a2332;
+    --text-secondary: #5a6577;
+    --text-dim: #8892a4;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --accent-bg: #eff6ff;
+    --green: #059669;
+    --green-light: #d1fae5;
+    --green-bg: #ecfdf5;
+    --amber: #d97706;
+    --amber-light: #fef3c7;
+    --red: #dc2626;
+    --red-light: #fee2e2;
+    --purple: #7c3aed;
+    --purple-light: #ede9fe;
+    --user-bg: #f0f4ff;
+    --user-border: #c7d7fe;
+    --code-bg: #f6f8fa;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+
+  .toolbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 28px;
+    display: flex; align-items: center; gap: 14px;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: var(--shadow-sm);
+  }
+  .toolbar .logo { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .toolbar .logo em { color: var(--accent); font-style: normal; }
+  .toolbar .version {
+    font-size: 11px; font-weight: 600; color: var(--accent);
+    background: var(--accent-light); padding: 2px 8px; border-radius: 6px;
+  }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .caption { font-size: 13px; color: var(--text-dim); }
+  .toolbar button {
+    background: var(--surface-alt); color: var(--text-secondary);
+    border: 1px solid var(--border); padding: 5px 14px;
+    border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+  }
+
+  .container { max-width: 1180px; margin: 0 auto; padding: 24px 20px; }
+
+  .header { text-align: center; padding: 28px 0 8px; }
+  .header h1 {
+    font-size: 26px; font-weight: 700; letter-spacing: -0.5px;
+  }
+  .header h1 em { color: var(--accent); font-style: normal; }
+  .header .subtitle {
+    color: var(--text-secondary); font-size: 14px; margin-top: 6px;
+    max-width: 620px; margin-left: auto; margin-right: auto;
+  }
+  .header .dataset-badge {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 14px;
+    padding: 5px 14px; background: var(--green-bg);
+    border: 1px solid #a7f3d0; border-radius: 20px;
+    font-size: 12px; font-weight: 600; color: var(--green);
+  }
+  .header .dataset-badge .dot {
+    width: 6px; height: 6px; background: var(--green); border-radius: 50%;
+  }
+
+  .layers { display: flex; gap: 8px; justify-content: center; margin: 18px 0 28px; }
+  .layer-chip {
+    padding: 5px 14px; border-radius: 16px; font-size: 12px;
+    font-weight: 600; border: 1px solid;
+  }
+  .layer-chip.l1 { border-color: var(--border); color: var(--text-dim); background: var(--surface); }
+  .layer-chip.l2 { border-color: #c4b5fd; color: var(--purple); background: var(--purple-light); }
+  .layer-chip.l3 { border-color: #93c5fd; color: var(--accent); background: var(--accent-bg); }
+
+  /* The chat container is wide enough to fit a 780px chat column plus a
+     378px callout area to its right. Standalone (un-annotated) turns
+     stay constrained to the 780px chat column so the left edge is
+     consistent with the turn-groups that extend a callout. */
+  .chat {
+    max-width: 1180px; margin: 0 auto;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .chat > .turn { max-width: 780px; }
+  .turn { display: flex; gap: 10px; align-items: flex-start; }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; flex-shrink: 0;
+    box-shadow: var(--shadow-sm);
+  }
+  .turn.user .avatar { background: var(--accent); color: white; }
+  .turn.agent .avatar {
+    background: linear-gradient(135deg, var(--green), #10b981); color: white;
+  }
+
+  .bubble {
+    border-radius: var(--radius); padding: 14px 16px;
+    font-size: 14px; max-width: 90%;
+    box-shadow: var(--shadow);
+    overflow-wrap: anywhere;  /* long inline-code tokens wrap on narrow */
+    min-width: 0;
+  }
+  .bubble code, .skill-panel code {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .turn.user .bubble { background: var(--user-bg); border: 1px solid var(--user-border); }
+  .turn.agent .bubble { background: var(--surface); border: 1px solid var(--border); }
+
+  .bubble .label {
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 5px;
+  }
+  .turn.user .label { color: var(--accent); }
+  .turn.agent .label { color: var(--green); }
+
+  .step-tag {
+    display: inline-block; background: var(--accent); color: white;
+    font-size: 9px; font-weight: 700; padding: 1px 7px;
+    border-radius: 4px; margin-left: 4px; letter-spacing: 0.5px;
+    vertical-align: middle;
+  }
+
+  /* Benchmark attribution */
+  .bench-note {
+    font-size: 11px; color: var(--text-dim);
+    font-style: italic; margin-top: 4px;
+  }
+  .bench-note .cite {
+    color: var(--accent); font-weight: 600; font-style: normal;
+  }
+
+  /* Detector selection cards */
+  .det-selection {
+    display: flex; flex-direction: column; gap: 6px;
+    margin: 8px 0;
+  }
+  .det-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+  }
+  .det-card .rank {
+    font-size: 11px; font-weight: 700;
+    background: var(--accent); color: white;
+    padding: 2px 7px; border-radius: 10px;
+    min-width: 34px; text-align: center;
+  }
+  .det-card .name {
+    font-weight: 700; color: var(--text);
+    font-size: 13px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+  }
+  .det-card .desc {
+    font-size: 12px; color: var(--text-secondary);
+    flex: 1;
+  }
+
+  /* Per-detector score table */
+  .score-table {
+    width: 100%; border-collapse: collapse;
+    margin: 8px 0; font-size: 13px;
+  }
+  .score-table th {
+    text-align: left; color: var(--text-dim);
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 6px 8px; border-bottom: 2px solid var(--border);
+  }
+  .score-table td {
+    padding: 6px 8px; border-bottom: 1px solid var(--border-light);
+  }
+  .score-table .det-name {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-weight: 700; color: var(--accent);
+  }
+  .score-table .num {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    text-align: right;
+  }
+  .score-table .above { color: var(--red); font-weight: 700; }
+  .score-table .pct { color: var(--text-dim); font-size: 11px; }
+
+  /* Metric cards */
+  .metrics {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; margin: 10px 0;
+  }
+  .metric {
+    background: var(--surface-alt);
+    border: 1px solid var(--border-light);
+    border-radius: 8px; padding: 10px; text-align: center;
+  }
+  .metric .val {
+    font-size: 18px; font-weight: 700; letter-spacing: -0.5px;
+  }
+  .metric .val.green { color: var(--green); }
+  .metric .val.amber { color: var(--amber); }
+  .metric .val.blue { color: var(--accent); }
+  .metric .val.red { color: var(--red); }
+  .metric .lbl {
+    font-size: 10px; color: var(--text-dim);
+    font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.3px; margin-top: 2px;
+  }
+
+  /* Feature contribution table */
+  .feat-table {
+    width: 100%; border-collapse: collapse;
+    margin: 8px 0; font-size: 12px;
+  }
+  .feat-table th {
+    text-align: left; color: var(--text-dim);
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 5px 8px; border-bottom: 1px solid var(--border);
+  }
+  .feat-table td { padding: 4px 8px; border-bottom: 1px solid var(--border-light); }
+  .feat-table .feat {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    color: var(--accent);
+  }
+  .feat-table .z {
+    color: var(--amber); font-weight: 700;
+    font-family: 'SF Mono', 'Consolas', monospace;
+  }
+  .feat-table .val {
+    color: var(--text-secondary);
+    font-family: 'SF Mono', 'Consolas', monospace;
+  }
+
+  /* Code snippet */
+  .code {
+    background: var(--code-bg);
+    border: 1px solid var(--border-light);
+    border-radius: 6px; padding: 8px 12px;
+    margin: 8px 0 2px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px; color: var(--text-secondary);
+    line-height: 1.5;
+    overflow-x: auto;  /* long lines scroll horizontally within the block */
+  }
+  .code .kw { color: #cf222e; }
+  .code .fn { color: #8250df; }
+  .code .str { color: #0a3069; }
+  .code .num { color: #0550ae; }
+  .code .cm { color: var(--text-dim); }
+
+  /* Multi-modal flex */
+  .modality-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 6px; margin: 10px 0 8px;
+  }
+  .mod-card {
+    padding: 8px 6px; text-align: center;
+    border: 1px solid var(--border-light);
+    border-radius: 8px; background: var(--surface);
+  }
+  .mod-card.current {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+  }
+  .mod-card .mod-name {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .mod-card.current .mod-name { color: var(--accent); }
+  .mod-card:not(.current) .mod-name { color: var(--text-dim); }
+  .mod-card .mod-count {
+    font-size: 10px; color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  /* Quality bars */
+  .qbar { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .qbar .qlbl { font-size: 12px; color: var(--text-secondary); width: 80px; text-align: right; }
+  .qbar .qtrack { flex: 1; height: 5px; background: var(--border-light); border-radius: 3px; overflow: hidden; }
+  .qbar .qfill { height: 100%; border-radius: 3px; }
+  .qbar .qval {
+    font-size: 12px; font-weight: 700; width: 34px;
+    font-family: 'SF Mono', monospace;
+  }
+
+  .verdict {
+    display: inline-block; padding: 2px 10px;
+    border-radius: 6px; font-size: 11px; font-weight: 700;
+  }
+  .verdict.high {
+    background: var(--green-bg); color: var(--green);
+    border: 1px solid #a7f3d0;
+  }
+
+  .note {
+    font-size: 12px; color: var(--text-dim);
+    margin-top: 6px; line-height: 1.5; font-style: italic;
+  }
+  hr.sep { border: none; border-top: 1px solid var(--border-light); margin: 8px 0; }
+
+  .footer {
+    text-align: center; padding: 28px 0;
+    font-size: 12px; color: var(--text-dim);
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer strong { color: var(--text-secondary); }
+
+  /* v3.2.0 skill decisions callout — shows the agent's internal reasoning
+     alongside the agent's conversational turn. The outer .turn-group grid
+     places the chat on the left and the callout on the right so the reader
+     can follow the conversation without scrolling past the machinery. */
+  .turn-group {
+    display: grid;
+    grid-template-columns: minmax(0, 780px) 360px;
+    gap: 18px;
+    align-items: start;
+    position: relative;
+  }
+  .turn-group > .turn { min-width: 0; }
+  /* Pointer arrow on the callout, pointing back at the agent bubble */
+  .turn-group > .skill-panel {
+    position: relative;
+  }
+  .turn-group > .skill-panel::before {
+    content: "";
+    position: absolute;
+    left: -9px; top: 18px;
+    width: 0; height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 9px solid #0f172a;
+  }
+  /* On narrow screens, collapse to the stacked layout. */
+  @media (max-width: 980px) {
+    .turn-group {
+      display: block;
+    }
+    .turn-group > .skill-panel {
+      margin-top: 10px;
+      margin-left: 42px;
+    }
+    .turn-group > .skill-panel::before { display: none; }
+  }
+
+  .skill-panel {
+    background: #0f172a;
+    color: #cbd5e1;
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
+    box-shadow: var(--shadow);
+    border: 1px solid #1e293b;
+    overflow-wrap: anywhere;
+    min-width: 0;
+    /* Sticks near the top of the group on long agent bubbles so the callout
+       stays visually tied to the turn it annotates. */
+    position: sticky; top: 74px;
+  }
+  .skill-panel .sp-header {
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    font-size: 9.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: #64748b;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .skill-panel .sp-header::before {
+    content: "";
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #38bdf8;
+    box-shadow: 0 0 6px #38bdf8;
+  }
+  .skill-panel .sp-section {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #1e293b;
+  }
+  .skill-panel .sp-section:first-of-type {
+    margin-top: 0; padding-top: 0; border-top: none;
+  }
+  .skill-panel .sp-title {
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    font-size: 11px; font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 4px;
+  }
+  .skill-panel .sp-pass { color: #34d399; }    /* green check */
+  .skill-panel .sp-fire { color: #fb923c; }    /* orange flame */
+  .skill-panel .sp-skip { color: #64748b; }    /* dim skip */
+  .skill-panel .sp-kv {
+    color: #94a3b8;
+  }
+  .skill-panel .sp-kv b { color: #e2e8f0; font-weight: 700; }
+  .skill-panel a {
+    color: #38bdf8; text-decoration: none;
+  }
+
+  body.capture .toolbar { display: none; }
+  @media print {
+    .toolbar { display: none !important; }
+    body { background: white; }
+    .bubble { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="logo">PyOD <em>V3</em></div>
+  <span class="version">Agentic</span>
+  <div class="spacer"></div>
+  <span style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--green); background:var(--green-bg); padding:3px 10px; border-radius:12px; border:1px solid #a7f3d0; font-weight:600;">
+    <span style="width:5px; height:5px; background:var(--green); border-radius:50%; display:inline-block;"></span>
+    od-expert skill active
+  </span>
+  <button onclick="document.body.classList.toggle('capture')">CAPTURE</button>
+</div>
+
+<div class="container">
+  <div class="header">
+    <h1>Any AI Agent Becomes an <em>OD Expert</em></h1>
+    <p class="subtitle">When a user asks about anomalies in their data, PyOD's <code>od-expert</code> skill auto-activates. The v3.2.0 skill encodes a master decision tree, top-10 critical pitfalls, and 11 adaptive escalation triggers. The shaded panels below the agent's turns show the skill's live decision-making.</p>
+    <div class="dataset-badge"><span class="dot"></span> Live run on Diabetes Screening dataset (768 patients, 8 clinical features)</div>
+    <div class="layers">
+      <span class="layer-chip l1">Layer 1: fit / predict</span>
+      <span class="layer-chip l2">Layer 2: ADEngine</span>
+      <span class="layer-chip l3">Layer 3: Agentic (v3.2.0 deep skill)</span>
+    </div>
+  </div>
+
+  <div class="chat">
+
+    <!-- Turn 1: User asks -->
+    <div class="turn user">
+      <div class="avatar">U</div>
+      <div class="bubble">
+        <div class="label">User</div>
+        I have a diabetes screening dataset &mdash; 768 patients with 8 clinical features (glucose, blood pressure, BMI, insulin, age, etc.). Find unusual patient profiles that might need follow-up. This is a medical screening context.
+      </div>
+    </div>
+
+    <!-- Turn 1: Agent response + its skill-decisions callout (side by side) -->
+    <div class="turn-group">
+
+      <div class="turn agent">
+        <div class="avatar">A</div>
+        <div class="bubble">
+          <div class="label">Agent <span class="step-tag">INVESTIGATE</span> <span style="display:inline-block; background:var(--purple); color:white; font-size:9px; font-weight:700; padding:1px 7px; border-radius:4px; margin-left:4px; letter-spacing:0.5px; vertical-align:middle;">od-expert skill v3.2.0</span></div>
+          <em style="color:var(--text-dim); font-size:12px;">&rarr; Anomaly-detection intent on tabular medical data. Activating <code>od-expert</code>.</em>
+
+          <div style="margin-top:8px;">Profiled as <strong>tabular, low-dim, n=768, 8 features</strong>. Because this is a medical screening context, I will run the full consensus and flag the scale-mismatch caveat in the final report.</div>
+
+          <div class="code">
+            <span class="kw">import</span> numpy <span class="kw">as</span> np<br>
+            <span class="kw">from</span> pyod.utils.ad_engine <span class="kw">import</span> ADEngine<br>
+            np.random.<span class="fn">seed</span>(<span class="num">42</span>)<br>
+            data = np.<span class="fn">genfromtxt</span>(<span class="str">'examples/data/pima.csv'</span>, delimiter=<span class="str">','</span>, skip_header=<span class="num">1</span>)<br>
+            X = data[:, :-<span class="num">1</span>]<br>
+            engine = <span class="fn">ADEngine</span>()<br>
+            state = engine.<span class="fn">investigate</span>(X)
+          </div>
+
+          <div class="bench-note">Routing informed by <span class="cite">ADBench (NeurIPS 2022)</span>: 30 algorithms on 57 tabular datasets. For n &lt; 1000 low-dim, KNN / LOF tie with IForest in ADBench top-5.</div>
+
+          <div class="det-selection">
+            <div class="det-card">
+              <span class="rank">#1</span>
+              <span class="name">KNN</span>
+              <span class="desc">K-Nearest Neighbors &mdash; proximity-based, confidence 0.85</span>
+            </div>
+            <div class="det-card">
+              <span class="rank">#2</span>
+              <span class="name">IForest</span>
+              <span class="desc">Isolation Forest, ADBench top-5, confidence 0.85</span>
+            </div>
+            <div class="det-card">
+              <span class="rank">#3</span>
+              <span class="name">LOF</span>
+              <span class="desc">Local Outlier Factor &mdash; local density, confidence 0.80</span>
+            </div>
+          </div>
+
+          Running all 3 in parallel&hellip;
+
+          <div class="metrics">
+            <div class="metric"><div class="val amber">62</div><div class="lbl">Flagged (8.1%)</div></div>
+            <div class="metric"><div class="val green">0.96</div><div class="lbl">Separation</div></div>
+            <div class="metric"><div class="val blue">0.59</div><div class="lbl">Agreement</div></div>
+            <div class="metric"><div class="val green">HIGH</div><div class="lbl">Quality (0.79)</div></div>
+          </div>
+
+          <strong>Top case #13</strong> &mdash; all 3 detectors agree; consensus score 0.997 (100th percentile). KNN was the strongest individually:
+
+          <table class="score-table">
+            <tr>
+              <th>Detector</th><th>Raw score</th><th>Percentile</th>
+            </tr>
+            <tr>
+              <td class="det-name">KNN</td>
+              <td class="num above">304.13</td>
+              <td class="num pct">100th</td>
+            </tr>
+            <tr>
+              <td class="det-name">IForest</td>
+              <td class="num above">0.15</td>
+              <td class="num pct">99.9th</td>
+            </tr>
+            <tr>
+              <td class="det-name">LOF</td>
+              <td class="num above">3.41</td>
+              <td class="num pct">99.8th</td>
+            </tr>
+          </table>
+
+        </div>
+      </div>
+
+      <!-- Skill-decisions callout: what the skill walked before and after the run -->
+      <aside class="skill-panel">
+        <div class="sp-header">od-expert &middot; decisions on this turn</div>
+
+        <div class="sp-section">
+          <div class="sp-title">Modality triage</div>
+          Sequential? <span class="sp-skip">no</span>. Graph? <span class="sp-skip">no</span>.
+          Text/image? <span class="sp-skip">no</span>. &rarr; <b>tabular</b>.
+          Loaded <a href="#">references/tabular.md</a>.
+        </div>
+
+        <div class="sp-section">
+          <div class="sp-title">Top-10 pitfalls (pre-run)</div>
+          <span class="sp-fire">&#9888; #1 Unscaled features</span>: per-feature &sigma; ratio = <b style="color:#fb923c;">347x</b> (insulin &sigma;=115, pedigree &sigma;=0.33). KNN / LOF need scaled input. <span class="sp-kv">Note for report caveat.</span><br>
+          <span class="sp-pass">&check; #2</span> contamination default (will check post-run).<br>
+          <span class="sp-pass">&check; #3</span> DL &times; tiny data: n=768 &lt; 1000 floor &rarr; skip AutoEncoder / VAE / DeepSVDD.<br>
+          <span class="sp-pass">&check; #4</span> PyG not needed.<br>
+          <span class="sp-pass">&check; #5</span> all 8 features numeric.<br>
+          <span class="sp-pass">&check; #6&ndash;10</span> all pass.
+        </div>
+
+        <div class="sp-section">
+          <div class="sp-title">Escalation triggers (11 checked)</div>
+          <span class="sp-fire">&#128680; T8 High-stakes domain</span>: user said "<b>medical screening</b>" &rarr; <b>FIRES</b>. Committing to dual-detector validation and a confidence caveat in the final report.<br>
+          <span class="sp-skip">&#8855; T1&ndash;T7, T9&ndash;T11</span> &mdash; not applicable on this turn.
+        </div>
+
+        <div class="sp-section">
+          <div class="sp-title">Plan &rarr; state.plans</div>
+          <b>KNN</b> (0.85), <b>IForest</b> (0.85), <b>LOF</b> (0.80).<br>
+          Running all three in parallel.
+        </div>
+
+        <div class="sp-section">
+          <div class="sp-title">Post-run triggers (T3, T4, T10)</div>
+          <span class="sp-pass">&check; T3</span> agreement = <b>0.59</b> &gt; 0.4 floor.<br>
+          <span class="sp-pass">&check; T4</span> stability = <b>0.81</b> (cutoff stable); separation = <b>0.96</b> is descriptive only; overall quality is a diagnostic summary, not correctness evidence.<br>
+          <span class="sp-pass">&check; T10</span> not over-tight.<br>
+          <span class="sp-kv"><b>state.next_action['action']</b> = 'report_to_user'.</span>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Turn 2: features -->
+    <div class="turn user">
+      <div class="avatar">U</div>
+      <div class="bubble">
+        <div class="label">User</div>
+        What clinical features are driving the flags?
+      </div>
+    </div>
+
+    <div class="turn agent">
+      <div class="avatar">A</div>
+      <div class="bubble">
+        <div class="label">Agent <span class="step-tag">EXPLAIN</span></div>
+        Analyzing the top anomaly (<strong>patient #13</strong>) via <strong>KNN</strong>. Absolute z-score magnitudes from <code>engine.explain_findings</code>:
+
+        <table class="feat-table">
+          <tr><th>Feature</th><th>|z-score|</th><th>Raw value</th></tr>
+          <tr><td class="feat">insulin</td><td class="z">6.65</td><td class="val">846 &micro;U/mL</td></tr>
+          <tr><td class="feat">age</td><td class="z">2.19</td><td class="val">59 yrs</td></tr>
+          <tr><td class="feat">glucose</td><td class="z">2.13</td><td class="val">189 mg/dL</td></tr>
+          <tr><td class="feat">pregnancies</td><td class="z">0.84</td><td class="val">1</td></tr>
+        </table>
+
+        <p class="note">Note: <code>engine.explain_findings</code> returns absolute z-score magnitudes; the raw values above are cross-checked manually to show direction. Extreme insulin (|z|=6.65), elevated glucose and older age &mdash; a metabolic-syndrome profile that warrants individual clinical review. Other top-flagged patients (#228, #247, #579, #177) each have their own contributing-feature ranking; insulin dominates several but is not a universal signature.</p>
+
+        <div class="code">
+          best_result = state.results[state.analysis[<span class="str">'best_detector_index'</span>]]<br>
+          explanations = engine.<span class="fn">explain_findings</span>(best_result, X=X, top_k=<span class="num">5</span>)
+        </div>
+      </div>
+    </div>
+
+    <!-- Turn 3: User reveals labels -->
+    <div class="turn user">
+      <div class="avatar">U</div>
+      <div class="bubble">
+        <div class="label">User</div>
+        I should mention &mdash; I actually have diabetes diagnosis labels for the full cohort.
+      </div>
+    </div>
+
+    <!-- Turn 3: Agent escalation + Trigger 5 callout -->
+    <div class="turn-group">
+
+      <div class="turn agent">
+        <div class="avatar">A</div>
+        <div class="bubble">
+          <div class="label">Agent <span class="step-tag">ESCALATE &middot; T5</span></div>
+          <em style="color:var(--text-dim); font-size:12px;">&rarr; Trigger 5 fired: labels mentioned but not provided.</em>
+
+          <div style="margin-top:8px;">That changes the plan. Supervised detection (with your labels as training signal) typically lifts AUC 10&ndash;20 points over unsupervised on a labelled cohort like this. The <code>ADEngine</code> session API is unsupervised in v3.2.x, so I would drop out of the session and call <code>XGBOD</code> directly on the classic fit / predict path:</div>
+
+          <div class="code">
+            <span class="kw">from</span> pyod.models.xgbod <span class="kw">import</span> XGBOD<br>
+            clf = <span class="fn">XGBOD</span>()<br>
+            clf.<span class="fn">fit</span>(X, y_labels)  <span class="cm"># supervised</span><br>
+            scores = clf.<span class="fn">decision_function</span>(X)<br>
+            labels_pred = clf.<span class="fn">predict</span>(X)
+          </div>
+
+          For now, I will finalise the unsupervised report and flag the label-availability note so you can switch to <code>XGBOD</code> later if the labels are validated.
+        </div>
+      </div>
+
+      <!-- Skill-decisions callout: Trigger 5 fires on new information -->
+      <aside class="skill-panel">
+        <div class="sp-header">od-expert &middot; trigger re-check</div>
+
+        <div class="sp-section">
+          <div class="sp-title">New information &rarr; re-walk triggers</div>
+          <span class="sp-fire">&#128680; T5 Labels mentioned but not provided</span>:
+          <b>FIRES</b>. User has labels but was using the unsupervised session path. Pausing to recommend a different entry point.<br>
+          <span class="sp-kv">Reasoning: supervised methods typically lift AUC 10&ndash;20 points over unsupervised on labelled datasets.</span>
+        </div>
+
+        <div class="sp-section">
+          <div class="sp-title">Recommended switch</div>
+          Drop out of <code>ADEngine</code> session (unsupervised only in v3.2.x) and call
+          <b>XGBOD</b> directly via its classic <code>fit(X, y)</code> / <code>predict(X)</code> interface.<br>
+          <span class="sp-kv">Requires <b>pyod[xgboost]</b>. Verified via <code>engine.explain_detector('XGBOD')['requires']</code> &rarr; <code>['xgboost']</code>.</span>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Turn 4: Final report -->
+    <div class="turn user">
+      <div class="avatar">U</div>
+      <div class="bubble">
+        <div class="label">User</div>
+        Just give me the report for now.
+      </div>
+    </div>
+
+    <div class="turn agent">
+      <div class="avatar">A</div>
+      <div class="bubble">
+        <div class="label">Agent <span class="step-tag">REPORT</span></div>
+
+        <div style="font-size: 15px; font-weight: 700; margin-bottom: 10px;">Diabetes Screening &mdash; Anomaly Report</div>
+
+        <div style="font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 6px;">Quality Assessment</div>
+        <div class="qbar">
+          <span class="qlbl">Separation</span>
+          <div class="qtrack"><div class="qfill" style="width:96%; background: var(--green);"></div></div>
+          <span class="qval" style="color: var(--green);">0.96</span>
+        </div>
+        <div class="qbar">
+          <span class="qlbl">Agreement</span>
+          <div class="qtrack"><div class="qfill" style="width:59%; background: var(--accent);"></div></div>
+          <span class="qval" style="color: var(--accent);">0.59</span>
+        </div>
+        <div class="qbar">
+          <span class="qlbl">Stability</span>
+          <div class="qtrack"><div class="qfill" style="width:81%; background: var(--purple);"></div></div>
+          <span class="qval" style="color: var(--purple);">0.81</span>
+        </div>
+
+        <hr class="sep">
+
+        <div style="font-size: 13px; line-height: 1.7;">
+          <strong>Dataset:</strong> Diabetes Screening (768 &times; 8)<br>
+          <strong>Detectors:</strong> KNN, IForest, LOF (3 / 3 converged)<br>
+          <strong>Best detector:</strong> KNN (highest correlation with consensus)<br>
+          <strong>Final flagged (consensus):</strong> 62 patients (8.1%)<br>
+          <strong>Diagnostics:</strong> <span class="verdict high">internally consistent; validate clinically</span>
+        </div>
+
+        <hr class="sep">
+
+        <div style="font-size: 12px; background: var(--amber-light); border: 1px solid #fcd34d; border-radius: 6px; padding: 10px; margin: 8px 0;">
+          <strong style="color: var(--amber);">&#9888; Assumptions &amp; caveats</strong><br>
+          <span style="color: var(--text-secondary);">
+          &bull; <b>Scale mismatch</b>: per-feature std ratio = 347&times;. LOF / KNN results may be biased toward the insulin axis. For a follow-up run, apply <code>RobustScaler</code> first.<br>
+          &bull; <b>Contamination</b>: default 0.1, observed 0.081 (<code>state.analysis['consensus_analysis']['anomaly_ratio']</code>). Close enough for unsupervised screening; adjust if you have domain knowledge.<br>
+          &bull; <b>High-stakes domain</b>: medical screening context triggered dual-detector validation (Pitfall 7 &rarr; always use &#8805; 2 detectors). All 3 detectors independently flagged the top cases.<br>
+          &bull; <b>Label availability</b>: user mentioned labels exist. For labelled data, dropping out of the <code>ADEngine</code> session and calling <code>XGBOD</code> (classic fit / predict, <code>pyod[xgboost]</code> extra) typically lifts AUC 10&ndash;20 points over unsupervised.
+          </span>
+        </div>
+
+        <hr class="sep">
+
+        <div style="font-size: 11px; color: var(--text-dim); font-style: italic;">
+          Reference numbers (agent did not see ground truth): precision 33 / 62 (53.2%), recall 33 / 268 (12.3%). The low recall reflects the large contamination gap &mdash; the true positive rate is 34.9%, far above the unsupervised threshold.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <strong>PyOD V3.2.0</strong> &middot; 61 detectors &middot; 6 modalities &middot; od-expert skill (1000 lines: SKILL.md + 6 references)<br>
+    <a href="https://github.com/yzhao062/pyod">github.com/yzhao062/pyod</a> &middot;
+    <a href="https://pyod.readthedocs.io">pyod.readthedocs.io</a> &middot;
+    <code style="font-size: 12px;">pip install pyod &amp;&amp; pyod install skill</code>
+  </div>
+</div>
+
+</body>
+</html>

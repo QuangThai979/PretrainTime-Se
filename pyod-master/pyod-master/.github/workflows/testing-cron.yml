@@ -1,0 +1,125 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Daily Testing
+
+on:
+  schedule:
+    # Runs "at minute 55 past every hour" (see https://crontab.guru)
+    - cron: '5 4 * * 1,3,5,6'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        # See testing.yml for rationale: macOS is pinned to Python 3.9 only
+        # until the Apple Silicon slowness on 3.10-3.13 is understood.
+        include:
+          - os: macos-latest
+            python-version: "3.9"
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install libomp for macOS
+      if: startsWith(matrix.os, 'macos')
+      run: brew install libomp
+
+    - name: Install dependencies (non-macOS, full deps including torch)
+      if: ${{ !startsWith(matrix.os, 'macos') }}
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r docs/requirements.txt
+        pip install pytest
+        pip install coverage
+        pip install coveralls
+
+    # macOS CI deliberately skips torch and torch_geometric because of
+    # the upstream PyTorch NNPACK slowdown on Apple Silicon
+    # (https://github.com/pytorch/pytorch/issues/107534). Conv-heavy
+    # torch tests run ~36x slower on Apple Silicon and exhaust any
+    # reasonable job timeout. Torch-dependent tests are auto-skipped
+    # by pyod/test/conftest.py when torch is absent.
+    # TODO: remove this macOS-specific step and the conftest shim once
+    # upstream PyTorch fixes NNPACK on ARM and a fixed wheel is released.
+    - name: Install dependencies (macOS, skip torch and torch_geometric)
+      if: startsWith(matrix.os, 'macos')
+      run: |
+        python -m pip install --upgrade pip
+        grep -vE '^(torch|torch_geometric)$' docs/requirements.txt > /tmp/mac-reqs.txt
+        pip install -r /tmp/mac-reqs.txt
+        pip install pytest
+        pip install coverage
+        pip install coveralls
+
+    - name: Test with pytest
+      run: |
+        coverage run --source=pyod -m pytest
+
+    - name: Coverage report
+      shell: bash
+      continue-on-error: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COVERALLS_SERVICE_NAME: github-actions
+      run: |
+        if ! coveralls --service=github; then
+          echo "Coveralls upload failed; retrying once in 15s for best effort."
+          sleep 15
+          coveralls --service=github || true
+        fi
+
+  # Early-warning job for the model-persistence surface in
+  # pyod.utils.persistence. Installs the latest pre-release wheels of
+  # sklearn (scientific-python nightly index) and joblib so that
+  # upstream changes to the Tree node dtype or the joblib unpickler
+  # show up here before a downstream user files an issue. Failure is
+  # NOT a release blocker; it is a signal to either add a new entry
+  # to _TREE_NODE_FIELD_DEFAULTS / _TREE_NODE_FIELD_RENAMES with a
+  # regression test, or to widen the dtype-compatibility check.
+  persistence-nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+    - uses: actions/checkout@v5
+    - name: Python 3.12
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+
+    - name: Install pre-release sklearn and joblib
+      run: |
+        python -m pip install --upgrade pip
+        # scientific-python nightly index ships pre-release sklearn/numpy/scipy
+        pip install --pre --upgrade \
+          --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple \
+          scikit-learn numpy scipy
+        pip install --pre --upgrade joblib
+        # PyOD itself plus pytest are required to exercise persistence.py
+        pip install -e .
+        pip install pytest
+
+    - name: Show installed versions
+      run: |
+        python -c "import sklearn, joblib, numpy, scipy, sys; \
+          print('python', sys.version.split()[0]); \
+          print('sklearn', sklearn.__version__); \
+          print('joblib', joblib.__version__); \
+          print('numpy', numpy.__version__); \
+          print('scipy', scipy.__version__)"
+
+    - name: Run persistence tests
+      run: |
+        python -m pytest pyod/test/test_persistence.py -v

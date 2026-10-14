@@ -1,0 +1,29 @@
+# Pretrain - Time-Series Cleaning & Anomaly Pipeline
+# (File nay chi dung ky tu ASCII de pip tren Windows cp1252 doc duoc.)
+#
+# PYTHON : 3.9 - 3.12  (da kiem thu tren Python 3.9.13, Windows 11)
+# CAI    : python -m venv .venv
+#          .venv\Scripts\activate
+#          pip install -r requirements.txt
+#
+# Phien ban duoi day la bo DA CHAY THANH CONG (khoa chinh xac de tai lap moi truong).
+# Neu dung Python 3.10+ co the noi "==" thanh ">=" cho tuong thich.
+
+# --- Loi xu ly ---
+numpy==2.0.2
+pandas==2.3.3
+matplotlib==3.9.4
+pyarrow==21.0.0
+
+# --- Phat hien bat thuong (PyOD ECOD) ---
+pyod==3.6.7
+numba==0.60.0
+llvmlite==0.43.0
+scipy==1.13.1
+scikit-learn==1.6.1
+joblib==1.5.3
+
+# --- Tuy chon: chi cai neu muon thay the cac buoc bang thu vien goc (nang, import cham) ---
+# u8darts>=0.30
+# sktime>=0.30
+# salesforce-merlion>=2.0

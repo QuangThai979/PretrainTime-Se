@@ -1,0 +1,125 @@
+# -*- coding: utf-8 -*-
+"""Tests for KShape."""
+
+import os
+import sys
+import unittest
+
+import numpy as np
+
+# temporary solution for relative imports in case pyod is not installed
+# if pyod is installed, no need to use the following line
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from pyod.models.ts_kshape import KShape
+from pyod.utils.data import generate_ts_data
+
+
+class TestKShape(unittest.TestCase):
+    def setUp(self):
+        self.X_train, self.X_test, self.y_train, self.y_test = \
+            generate_ts_data(n_train=300, n_test=200, contamination=0.05,
+                             random_state=42)
+
+    def test_fit(self):
+        clf = KShape(n_clusters=3, window_size=20, contamination=0.1)
+        clf.fit(self.X_train)
+        assert len(clf.decision_scores_) == 300
+
+    def test_decision_function(self):
+        clf = KShape(n_clusters=3, window_size=20)
+        clf.fit(self.X_train)
+        scores = clf.decision_function(self.X_test)
+        assert len(scores) == 200
+
+    def test_multivariate(self):
+        X_multi = generate_ts_data(
+            n_train=300, n_test=200, n_channels=2, contamination=0.05,
+            random_state=42)[0]
+        clf = KShape(n_clusters=3, window_size=20)
+        clf.fit(X_multi)
+        assert len(clf.decision_scores_) == 300
+
+    def test_has_labels_and_threshold(self):
+        clf = KShape(n_clusters=3, window_size=20, contamination=0.1)
+        clf.fit(self.X_train)
+        assert hasattr(clf, 'labels_')
+        assert hasattr(clf, 'threshold_')
+        assert len(clf.labels_) == 300
+
+    def test_scores_nonnegative(self):
+        clf = KShape(n_clusters=3, window_size=20)
+        clf.fit(self.X_train)
+        # SBD is in [0, 2], so scores should be non-negative
+        assert np.all(clf.decision_scores_ >= 0)
+
+    def test_short_series_raises(self):
+        with self.assertRaises(ValueError):
+            clf = KShape(window_size=50)
+            clf.fit(np.random.randn(30))
+
+    def test_kshape_centroid_correctness(self):
+        """Identical members should produce a centroid with near-zero SBD."""
+        from pyod.models.ts_kshape import _znormalize, _sbd, _compute_centroid
+        x = _znormalize(np.sin(np.arange(20, dtype=np.float64)))
+        members = np.vstack([x, x, x])
+        centroid = _compute_centroid(members)
+        dist, _ = _sbd(x, centroid)
+        assert dist < 0.1, f"Centroid SBD too high: {dist}"
+
+    def test_kshape_shift_align_matches_sbd_lag(self):
+        """Aligning a member with the _sbd lag must move it onto the target."""
+        from pyod.models.ts_kshape import _sbd, _shift_align
+        m = 5
+        x = np.array([1.0, 0, 0, 0, 0])
+        y = np.array([0, 0, 1.0, 0, 0])  # x delayed to the right by 2
+        _, shift = _sbd(x, y)
+        aligned = _shift_align(x, -shift, m)
+        assert np.allclose(aligned, y), f"Alignment did not match: {aligned}"
+
+    def test_kshape_centroid_alignment_recovers_shape(self):
+        """_kshape centroid refinement must shift-align members onto the centroid.
+
+        If the shift sign is inverted, members are shifted away from the centroid,
+        resulting in a smeared centroid with high SBD to the underlying pattern.
+        """
+        from pyod.models.ts_kshape import _kshape, _znormalize, _sbd
+
+        m = 50
+        t = np.linspace(-1, 1, 20)
+        pulse = np.exp(-(t ** 2) / 0.1) - 0.5 * np.exp(-((t - 0.3) ** 2) / 0.05)
+        base = np.zeros(m)
+        base[15:35] = pulse
+        base = _znormalize(base)
+
+        shifts = [-8, -4, -2, 0, 2, 4, 8]
+        rng = np.random.RandomState(42)
+        subsequences = []
+        for s in shifts:
+            shifted = np.zeros(m)
+            if s >= 0:
+                shifted[s:] = base[:m - s]
+            else:
+                shifted[:m + s] = base[-s:]
+            noisy = _znormalize(shifted + 0.02 * rng.randn(m))
+            subsequences.append(noisy)
+        subsequences = np.array(subsequences)
+
+        for seed in (0, 42):
+            centroids, _, _ = _kshape(
+                subsequences, n_clusters=1, max_iter=10,
+                random_state=np.random.RandomState(seed)
+            )
+            dist, _ = _sbd(base, centroids[0])
+            assert dist < 0.1, (
+                f"Centroid SBD to underlying shape too high ({dist:.4f}) for seed {seed}"
+            )
+
+    def test_kshape_too_few_subsequences_raises(self):
+        with self.assertRaises(ValueError):
+            clf = KShape(n_clusters=10, window_size=20)
+            clf.fit(np.random.randn(25))
+
+
+if __name__ == '__main__':
+    unittest.main()

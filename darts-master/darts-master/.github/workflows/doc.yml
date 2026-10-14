@@ -1,0 +1,69 @@
+name: darts documentation build and release workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Clone repository"
+        uses: actions/checkout@v6
+
+      - name: "Set up Python 3.12"
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: "Install uv"
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          version: "0.11.7"
+          enable-cache: true
+          python-version: '3.12'
+
+      - name: "Install pandoc"
+        run: |
+          sudo apt-get install -y pandoc
+
+      - name: "Install Dependencies"
+        run: |
+          # Testing against latest compatible versions
+          uv sync --group dev-all --group torch-cpu
+
+      - name: "Install libomp (for LightGBM)"
+        run: |
+          chmod +x ./.github/scripts/libomp-${{ runner.os }}.sh
+          ./.github/scripts/libomp-${{ runner.os }}.sh
+
+      - name: "Build docs"
+        run: |
+          uv run make --directory ./docs build-all-docs
+
+      - name: "Optimize cache for CI"
+        run: |
+          # Remove pre-built wheels but keep source-built wheels
+          # This reduces cache size while retaining expensive-to-rebuild packages
+          uv cache prune --ci
+
+      - name: "Upload documentation as artifact"
+        uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: docs/build/html
+
+  deploy-docs:
+    needs: [build-docs]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+    steps:
+      - name: "Deploy to GitHub Pages"
+        id: deployment
+        uses: actions/deploy-pages@v5.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
